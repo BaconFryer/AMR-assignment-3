@@ -204,7 +204,7 @@ def reload():
 
 if __name__ == "__main__":
     # Create the DQN agent
-    num_cpu = int(multiprocessing.cpu_count()/2)
+    num_cpu = int(multiprocessing.cpu_count() * 0.75)
     env_vector = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
     model = DQN('MlpPolicy', env=env_vector, verbose=2, learning_starts=1000, target_update_interval=500)
 
