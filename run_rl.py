@@ -91,9 +91,6 @@ class EnvironmentWrapper(gym.Env):
         x, y = state[0], state[1]
         return -8 <= x <= 8 and -8 <= y <= 8
 
-running = True
-target_pos = targets[0]
-
 ## RL Training
 # Define the state space
 state_low = np.array([-8, -8, -np.inf, -np.inf, -np.pi, -np.inf])
@@ -128,6 +125,7 @@ env_wrapper = EnvironmentWrapper(environment)
 # Create the DQN agent
 model = DQN('MlpPolicy', env=env_wrapper, verbose=1, learning_starts=1000, target_update_interval=500)
 
+target_pos = targets[0]
 # Training loop
 def train(num_episodes):
     episode_rewards = []
@@ -144,17 +142,20 @@ def train(num_episodes):
             if not env_wrapper.is_within_bounds(next_state):
                 reward = -100  # Apply punishment for breaching bounds
                 done = True  # End the episode
+                
+            infos = [info]
 
-            # Convert the action to the appropriate format
-            action = np.array(action).reshape(1, -1)
-
-            model.replay_buffer.add(state, action, next_state, reward, done, info)  # Store the experience in the replay buffer
+            model.replay_buffer.add(state, next_state, action, reward, done, infos)  # Store the experience in the replay buffer
             state = next_state
             episode_reward += reward
 
             if model.replay_buffer.size() >= model.batch_size:
                 # Update the model using the collected experiences
                 model.train(gradient_steps=1, batch_size=model.batch_size)
+
+        # Update the target position for the next episode
+        target_idx = (ep + 1) % len(targets)
+        target_pos = targets[target_idx]
 
         # Print episode information
         print(f"Episode: {ep+1}, Reward: {episode_reward:.2f}, Position: ({state[0]:.2f}, {state[1]:.2f})")
@@ -174,32 +175,6 @@ def reload():
     except Exception as e:
         print("Error reloading controller.py")
         print(e)
-
-
-# def check_action(unchecked_action):
-#     # Check if the action is a tuple or list and of length 2
-#     if isinstance(unchecked_action, (tuple, list)):
-#         if len(unchecked_action) != 2:
-#             print(
-#                 "WARNING: Controller returned an action of length "
-#                 + str(len(unchecked_action))
-#                 + ", expected 2"
-#             )
-#             checked_action = (0, 0)
-#             sys.exit()
-#         else:
-#             checked_action = unchecked_action
-
-#     else:
-#         print(
-#             "WARNING: Controller returned an action of type "
-#             + str(type(unchecked_action))
-#             + ", expected list or tuple"
-#         )
-#         checked_action = (0, 0)
-#         sys.exit()
-
-#     return checked_action
     
 # Train the model
 num_episodes = 1000
