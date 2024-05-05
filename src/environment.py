@@ -9,6 +9,7 @@ from typing import Optional
 import pathlib
 from . import helpers
 
+
 class Environment:
     metadata = {
         "render_modes": ["human", "rgb_array"],
@@ -42,8 +43,6 @@ class Environment:
         # Generate drone
         self.drone = Drone(*self.setup_drone_parameters(rand_dynamics_seed))
 
-        self.time = 0
-
         if self.render_mode == "human" or self.render_mode == "rgb_array":
             self.init_pygame()
             self.flight_path = []
@@ -52,6 +51,7 @@ class Environment:
         pygame.init()
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
         pygame.display.set_caption("AMR Assignment 3")
+        self.clock = pygame.time.Clock()
 
         self.drone.load_sprite(
             pygame.image.load(
@@ -69,8 +69,6 @@ class Environment:
 
         if self.render_mode == "human" or self.render_mode == "rgb_array":
             self.add_postion_to_flight_path(self.drone.position_px)
-            
-        self.time += 1
 
     def render(self, manager, target_pos):
         if self.render_mode == None:
@@ -172,7 +170,7 @@ class Environment:
         rotor_time_constant = random.uniform(0.05, 0.1)
         rotor_constant = 6432
         omega_b = 1779
-        
+
         return (
             Vector2(4, 4),
             Vector2(0, 0),
@@ -197,7 +195,6 @@ class Environment:
         )
         if self.render_mode == "human" or self.render_mode == "rgb_array":
             self.flight_path = []
-        self.time = 0
 
     def close(self):
         pygame.quit()

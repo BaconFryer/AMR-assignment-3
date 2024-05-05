@@ -1,24 +1,28 @@
-from src.environment import Environment
+# Local
+from src.environment_rl import Environment
 import controller
+
+# External
 import csv
 import sys
 import importlib
-import pathlib
 import numpy as np
-import gymnasium as gym
-from stable_baselines3 import DQN
-from stable_baselines3.common.buffers import ReplayBuffer
 import logging
 from tqdm import tqdm
 
+# RL Libraries
+import gymnasium as gym
+from stable_baselines3 import DQN
+from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.logger import configure
-
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.utils import set_random_seed
-import multiprocessing
+
 
 # Logging or something idk
-logging.basicConfig(filename='training.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(filename='training.log', level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s',
+                    filemode='w')
 
 def make_env(rank, seed=0):
     def _init():
@@ -131,18 +135,18 @@ def calc_reward(state, target_pos, t):
     
     # Punish for leaving the game area
     if not (-8 <= x <= 8 and -8 <= y <= 8):
-        return -500
+        return -300
     
     # Reward for survival
     reward = 0.1
     
     # Reward for being close to the target
     dist = ((x - x_targ)**2 + (y - y_targ)**2)**0.5
-    reward += 1 / (1 + dist)
+    reward += 100 * (1 / (1 + dist))
     
     # Reward for being at the target for 10 seconds
     if 10 <= t <= 20 and dist < 0.01:
-        reward += 100
+        reward += 150
         
     # logging.info(f"Time: {t}, State: {state}, Target: {target_pos}, Reward: {reward}")
     
@@ -153,44 +157,53 @@ env_wrapper = EnvironmentWrapper(environment)
 
 # Training loop
 target_pos = targets[0]
-def train(num_episodes):
+def train():
     episode_rewards = []
     logger = logging.getLogger(__name__)
+    model.learn(total_timesteps=125000)
+    model.save("test_xd")
+
     
-    for ep in tqdm(range(num_episodes), desc="Training Progress"): #range(num_episodes):
-        states = env_vector.reset()
-        done = [False] * num_cpu  # Initialize done for each environment
-        episode_reward = 0
+    # for ep in tqdm(range(num_episodes), desc="Training Progress"): #range(num_episodes):
+    #     states = env_vector.reset()
+    #     dones = [False] * num_cpu  # Initialize done for each environment
+    #     episode_reward = 0
         
-        while not all(done):
-            actions = model.predict(states, deterministic=True)[0]
-            next_states, rewards, dones, infos = env_vector.step(actions)
-            
-            model.replay_buffer.add(states, next_states, actions, rewards, dones, infos)
-            states = next_states
-            episode_reward += sum(rewards)
-            done = [done[i] or dones[i] for i in range(num_cpu)]  # Update the done list
-            
-            if model.replay_buffer.size() >= model.batch_size:
-                model.train(gradient_steps=1, batch_size=model.batch_size)
-                
-            if all(done):
-                states = env_vector.reset()
-                
-            # Update the target position for the next episode
-            # target_idx = (ep + 1) % len(targets)
-            # target_pos = targets[target_idx]
-            
-            # Print episode information
-            # print(f"Episode: {ep+1}, Reward: {episode_reward:.2f}")
+    #     actions = model.predict(states, deterministic=True)[0]
+    #     next_states, rewards, dones, infos = env_vector.step(actions)
         
-        episode_rewards.append(episode_reward)
-        logger.info(f"Episode: {ep+1}, Reward: {episode_reward:.2f}")
+    #     model.replay_buffer.add(states, next_states, actions, rewards, dones, infos)
+    #     states = next_states
+    #     episode_reward += sum(rewards)
+        
+    #     # for i in range(num_cpu):
+    #     #     done[i] = dones[i]
+            
+    #     # done = [dones[i] for i in range(num_cpu)]
+    #     # done = [done[i] or dones[i] for i in range(num_cpu)]  # Update the done list
+        
+    #     if model.replay_buffer.size() >= model.batch_size:
+    #         model.train(gradient_steps=1, batch_size=model.batch_size)
+    #     if ep % 100 == 0:
+    #         print(f"dones: {dones}")
+    #         print(f"rewards: {rewards}")
+                
+    #     states = env_vector.reset()
+        
+    #         # Update the target position for the next episode
+    #         # target_idx = (ep + 1) % len(targets)
+    #         # target_pos = targets[target_idx]
+            
+    #         # Print episode information
+    #         # print(f"Episode: {ep+1}, Reward: {episode_reward:.2f}")
+        
+    #     episode_rewards.append(episode_reward)
+    #     logger.info(f"Episode: {ep+1}, Reward: {episode_reward:.2f}")
     
-    # Save the trained model
-    model.save("trained_model")
+    # # Save the trained model
+    # model.save("trained_model")
     
-    return episode_rewards
+    # return episode_rewards
 
 def reload():
     # re importing the controller module without closing the program
@@ -204,9 +217,10 @@ def reload():
 
 if __name__ == "__main__":
     # Create the DQN agent
-    num_cpu = int(multiprocessing.cpu_count() * 0.75)
+    num_cpu = 12
     env_vector = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
-    model = DQN('MlpPolicy', env=env_vector, verbose=2, learning_starts=1000, target_update_interval=500)
+    model = DQN('MlpPolicy', env=env_vector, verbose=1, learning_rate=3e-3, batch_size=16192,
+                learning_starts=1000, target_update_interval=100, seed=18)
 
     # Configure the logger
     if not hasattr(model, '_logger') or model._logger is None:
@@ -214,8 +228,9 @@ if __name__ == "__main__":
         
     # Train the model
     num_episodes = 10000
-    episode_rewards = train(num_episodes)
+    episode_rewards = train()
+    print('Finished :D')
 
     # Print the average reward over the last 100 episodes
-    avg_reward = np.mean(episode_rewards[-100:])
-    print(f"\nAverage reward over the last 100 episodes: {avg_reward:.2f}")
+    #avg_reward = np.mean(episode_rewards[-100:])
+    #print(f"\nAverage reward over the last 100 episodes: {avg_reward:.2f}")
