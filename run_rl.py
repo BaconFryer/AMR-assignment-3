@@ -123,7 +123,7 @@ def calculate_reward(state, target_pos, t):
 env_wrapper = EnvironmentWrapper(environment)
 
 # Create the DQN agent
-model = DQN('MlpPolicy', env=env_wrapper, verbose=1, learning_starts=1000, target_update_interval=500)
+model = DQN('MlpPolicy', env=env_wrapper, verbose=2, learning_starts=1000, target_update_interval=500)
 
 target_pos = targets[0]
 # Training loop
