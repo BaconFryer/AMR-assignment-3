@@ -42,8 +42,7 @@ class Environment:
         # Generate drone
         self.drone = Drone(*self.setup_drone_parameters(rand_dynamics_seed))
 
-        # Initialize the clock
-        self.clock = pygame.time.Clock()
+        self.time = 0
 
         if self.render_mode == "human" or self.render_mode == "rgb_array":
             self.init_pygame()
@@ -70,6 +69,8 @@ class Environment:
 
         if self.render_mode == "human" or self.render_mode == "rgb_array":
             self.add_postion_to_flight_path(self.drone.position_px)
+            
+        self.time += 1
 
     def render(self, manager, target_pos):
         if self.render_mode == None:
@@ -196,6 +197,7 @@ class Environment:
         )
         if self.render_mode == "human" or self.render_mode == "rgb_array":
             self.flight_path = []
+        self.time = 0
 
     def close(self):
         pygame.quit()
