@@ -16,7 +16,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
+from stable_baselines3.common.callbacks import CheckpointCallback, ReduceLROnPlateau
 from stable_baselines3.common.logger import configure
 
 
@@ -150,8 +150,17 @@ def train(time_steps=1e6, save_dir='./models/', save_freq=1e5, log_dir='./logs/'
         save_vecnormalize=True,
     )
 
+    plateau_callback = ReduceLROnPlateau(
+        monitor='episode_reward',
+        factor=0.5,
+        patience=50,
+        verbose=1,
+        mode='max',
+        min_lr=1e-5,
+    )
+
     new_logger = configure(log_dir, ["stdout", "csv", "tensorboard"])
-    model.learn(total_timesteps=time_steps, callback=callback, progress_bar=True)
+    model.learn(total_timesteps=time_steps, callback=[checkpoint_callback, plateau_callback], progress_bar=True)
     model.set_logger(new_logger)
     model.save(f'{save_dir}PPO_Drone')
 
@@ -176,7 +185,7 @@ if __name__ == "__main__":
     )
     
     env_vec = SubprocVecEnv([make_env(i, log_dir, env_base) for i in range(num_cpu)])
-    model = PPO('MlpPolicy', env=env_vec, verbose=1, learning_rate=1e-3,
+    model = PPO('MlpPolicy', env=env_vec, verbose=1, learning_rate=1e-2,
                 batch_size=2048*num_cpu, seed=18)
         
     # Train model

@@ -8,7 +8,7 @@ import importlib
 import pathlib
 
 targets = []
-with open("targets.csv", "r") as file:
+with open("test.csv", "r") as file: # change this when needed
     csvreader = csv.reader(file)
     header = next(csvreader)
     for row in csvreader:

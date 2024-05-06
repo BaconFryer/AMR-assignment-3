@@ -3,7 +3,7 @@ group_number = 18  # Enter your group number here
 
 from stable_baselines3 import PPO
 try:
-    model = PPO.load("./models/PPO_Drone_3999968_steps.zip")
+    model = PPO.load("./models/PPO_Drone_15999872_steps.zip")
 except:
     print(f"No model found.")
 time = 0
