@@ -165,7 +165,7 @@ if __name__ == "__main__":
     )
     
     env_vec = SubprocVecEnv([make_env(i, log_dir, env_base) for i in range(num_cpu)])
-    model = PPO('MlpPolicy', env=env_vec, verbose=1, learning_rate=1e-4,
+    model = PPO('MlpPolicy', env=env_vec, verbose=1, learning_rate=1e-5,
                 batch_size=2048*num_cpu, seed=18)
         
     # Train model
