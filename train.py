@@ -110,7 +110,7 @@ class EnvWrapper(gym.Env):
         dist_fact = (1 / (1 + dist**2))
         
         # Punish for leaving the game area
-        if not (-8 <= x <= 8 and -8 <= y <= 8):
+        if not (0 <= x <= 8 and 0 <= y <= 8):
             return -20
         
         # Reward for being close to the target
@@ -140,7 +140,7 @@ class EnvWrapper(gym.Env):
 def train(time_steps=1e6, save_dir='./models/', save_freq=1e5, log_dir='./logs/'):    
     callback = CheckpointCallback(
         save_freq=save_freq,
-        save_path=f'{save_dir}/training/',
+        save_path=f'{save_dir}/',
         name_prefix="PPO_Drone",
         save_replay_buffer=True,
         save_vecnormalize=True,
