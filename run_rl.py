@@ -3,38 +3,29 @@ from src.environment_rl import Environment
 import controller
 
 # External
+import os
 import csv
-import sys
-import importlib
 import numpy as np
+import pandas as pd
 import logging
-from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 # RL Libraries
 import gymnasium as gym
-from stable_baselines3 import DQN
-from stable_baselines3.common.buffers import ReplayBuffer
-from stable_baselines3.common.logger import configure
+from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.utils import set_random_seed
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.results_plotter import load_results, ts2xy
 
 
-# Logging or something idk
+## Logging or something idk
 logging.basicConfig(filename='training.log', level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s',
                     filemode='w')
 
-def make_env(rank, seed=0):
-    def _init():
-        env = EnvironmentWrapper(environment)
-        env.seed(controller.group_number + rank)
-        return env
-    set_random_seed(seed)
-    return _init
-
+## Cursed file loading
 targets = []
-time = 0
-
 with open("targets.csv", "r") as file:
     csvreader = csv.reader(file)
     header = next(csvreader)
@@ -51,7 +42,9 @@ with open("targets.csv", "r") as file:
         else:
             targets.append((float(row[0]), float(row[1])))
 
-environment = Environment(
+
+## Environment setup
+env_base = Environment(
     render_mode=None,
     render_path=False,
     screen_width=1000,
@@ -60,11 +53,20 @@ environment = Environment(
     wind_active=controller.wind_active,
 )
 
-class EnvironmentWrapper(gym.Env):
-    def __init__(self, environment):
-        self.environment = environment
+def make_env(rank, seed=0):
+    def _init():
+        env = EnvWrapper(env_base)
+        env.seed(controller.group_number + rank)
+        env = Monitor(env, filename=f'./logs/training_data_{rank}')
+        return env
+    set_random_seed(seed)
+    return _init
+
+class EnvWrapper(gym.Env):
+    def __init__(self, env_base):
+        self.env = env_base
         self.num_steps = 161
-        self.action_space = gym.spaces.Discrete(self.num_steps ** 2)
+        self.action_space = gym.spaces.MultiDiscrete(np.array([self.num_steps, self.num_steps]))
         self.observation_space = gym.spaces.Box(
             low=np.array([-8, -8, -np.inf, -np.inf, -np.pi, -np.inf]),
             high=np.array([8, 8, np.inf, np.inf, np.pi, np.inf]),
@@ -75,26 +77,28 @@ class EnvironmentWrapper(gym.Env):
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-        self.environment.reset(controller.group_number, controller.wind_active)
+        self.env.reset(controller.group_number, controller.wind_active)
         self.time = 0.0  # Reset time variable
         
-        observation = self.environment.drone.get_state()
+        observation = self.env.drone.get_state()
         info = {}  # Add any additional information if needed
         return observation, info
 
     def step(self, action):
         u_1, u_2 = self._convert_action(action)
-        self.environment.step((u_1, u_2))
-        state = self.environment.drone.get_state()
+        self.env.step((u_1, u_2))
+        state = self.env.drone.get_state()
+        x, y = state[0], state[1]
 
         # Calculate time_delta and update time variable
-        sim_time = self.environment.time / 60
+        sim_time = self.env.time / 60
 
-        reward = calc_reward(state, target_pos, sim_time)
+        # Calculate the reward
+        reward = self.calc_reward(state, target_pos, sim_time)
         
         # Check if the episode is done based on certain conditions
         done = False
-        if not self.in_bounds(state):
+        if not (-8 <= x <= 8 and -8 <= y <= 8):
             # Episode is done if the drone goes out of bounds
             done = True
         elif sim_time >= 20:
@@ -103,134 +107,104 @@ class EnvironmentWrapper(gym.Env):
     
         truncated = False
         info = {}
-    
-        # logging.info(f"Left Thrust: {u_1}, Right Thrust: {u_2}, State: {state}, Reward: {reward}, Done: {done}")
         return state, reward, done, truncated, info
 
+    # Define the reward function
+    def calc_reward(self, state, target_pos, t):
+        x, y = state[0], state[1]
+        x_targ, y_targ = target_pos[0], target_pos[1]
+        
+        # Punish for leaving the game area
+        if not (-8 <= x <= 8 and -8 <= y <= 8):
+            return -20
+        
+        # Reward for being close to the target
+        dist = ((x - x_targ)**2 + (y - y_targ)**2)**0.5
+        reward = 1 / (1 + dist)
+        
+        # Reward for time spent alive
+        reward += t*0.05
+        
+        # Reward for being at the target during the last 10 seconds
+        if 10 <= t <= 20 and dist < 0.01:
+            reward += 1
+            
+        return reward
+
     def _convert_action(self, action):
-        u_1_idx = action // self.num_steps
-        u_2_idx = action % self.num_steps
-        u_1 = u_1_idx * 0.00625
-        u_2 = u_2_idx * 0.00625
+        u_1 = action[0] / 160 if action[0] != 0 else 0
+        u_2 = action[1] / 160 if action[1] != 0 else 0
+        
         return u_1, u_2
 
     def seed(self, seed=None):
         self.np_random = np.random.RandomState(seed)
         return [seed]
-    
-    def in_bounds(self, state):
-        x, y = state[0], state[1]
-        return -8 <= x <= 8 and -8 <= y <= 8
 
-## RL Training
-# Define the state space
-state_low = np.array([-8, -8, -np.inf, -np.inf, -np.pi, -np.inf])
-state_high = np.array([8, 8, np.inf, np.inf, np.pi, np.inf])
-state_space = gym.spaces.Box(low=state_low, high=state_high, dtype=np.float32)
 
-# Define the reward function
-def calc_reward(state, target_pos, t):
-    x, y = state[0], state[1]
-    x_targ, y_targ = target_pos[0], target_pos[1]
-    
-    # Punish for leaving the game area
-    if not (-8 <= x <= 8 and -8 <= y <= 8):
-        return -300
-    
-    # Reward for survival
-    reward = 0.1
-    
-    # Reward for being close to the target
-    dist = ((x - x_targ)**2 + (y - y_targ)**2)**0.5
-    reward += 100 * (1 / (1 + dist))
-    
-    # Reward for being at the target for 10 seconds
-    if 10 <= t <= 20 and dist < 0.01:
-        reward += 150
-        
-    # logging.info(f"Time: {t}, State: {state}, Target: {target_pos}, Reward: {reward}")
-    
-    return reward
-
-# Create the wrapper for the environment
-env_wrapper = EnvironmentWrapper(environment)
-
-# Training loop
+## Training
 target_pos = targets[0]
-def train():
-    episode_rewards = []
-    logger = logging.getLogger(__name__)
-    model.learn(total_timesteps=125000)
-    model.save("test_xd")
-
+def train(time_steps=1e6):
+    model.learn(total_timesteps=time_steps)
+    model.save("PPO_Drone")
     
-    # for ep in tqdm(range(num_episodes), desc="Training Progress"): #range(num_episodes):
-    #     states = env_vector.reset()
-    #     dones = [False] * num_cpu  # Initialize done for each environment
-    #     episode_reward = 0
-        
-    #     actions = model.predict(states, deterministic=True)[0]
-    #     next_states, rewards, dones, infos = env_vector.step(actions)
-        
-    #     model.replay_buffer.add(states, next_states, actions, rewards, dones, infos)
-    #     states = next_states
-    #     episode_reward += sum(rewards)
-        
-    #     # for i in range(num_cpu):
-    #     #     done[i] = dones[i]
-            
-    #     # done = [dones[i] for i in range(num_cpu)]
-    #     # done = [done[i] or dones[i] for i in range(num_cpu)]  # Update the done list
-        
-    #     if model.replay_buffer.size() >= model.batch_size:
-    #         model.train(gradient_steps=1, batch_size=model.batch_size)
-    #     if ep % 100 == 0:
-    #         print(f"dones: {dones}")
-    #         print(f"rewards: {rewards}")
-                
-    #     states = env_vector.reset()
-        
-    #         # Update the target position for the next episode
-    #         # target_idx = (ep + 1) % len(targets)
-    #         # target_pos = targets[target_idx]
-            
-    #         # Print episode information
-    #         # print(f"Episode: {ep+1}, Reward: {episode_reward:.2f}")
-        
-    #     episode_rewards.append(episode_reward)
-    #     logger.info(f"Episode: {ep+1}, Reward: {episode_reward:.2f}")
+
+## Plotting
+def plot_training_data():
+    log_dir = './logs/'
     
-    # # Save the trained model
-    # model.save("trained_model")
+    # Get all the monitor.csv files in the log directory
+    monitor_files = [file for file in os.listdir(log_dir) if file.endswith('.monitor.csv')]
     
-    # return episode_rewards
+    # Load the data from all monitor files
+    data_frames = []
+    for file in monitor_files:
+        file_path = os.path.join(log_dir, file)
+        data = pd.read_csv(file_path, skiprows=1)
+        data_frames.append(data)
+    
+    # Concatenate the data from all monitor files
+    all_data = pd.concat(data_frames)
+    
+    # Extract the desired parameters
+    timesteps = all_data['l'].cumsum()
+    rewards = all_data['r']
+    episode_lengths = all_data['l']
+    
+    # Create subplots
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+    
+    # Plot rewards
+    ax1.plot(timesteps, rewards, color='blue', linewidth=1)
+    ax1.set_ylabel('Rewards')
+    ax1.set_title('Training Rewards')
+    ax1.grid(True)
+    
+    # Plot episode lengths (survival time)
+    ax2.plot(timesteps, episode_lengths, color='green', linewidth=1)
+    ax2.set_xlabel('Timesteps')
+    ax2.set_ylabel('Episode Length')
+    ax2.set_title('Episode Lengths (Survival Time)')
+    ax2.grid(True)
+    
+    # Adjust spacing between subplots
+    plt.tight_layout()
+    
+    # Save the plot as an image file
+    plt.savefig(f'{log_dir}training_data.png')
+    plt.close()
 
-def reload():
-    # re importing the controller module without closing the program
-    try:
-        importlib.reload(controller)
-        environment.reset(controller.group_number, controller.wind_active)
 
-    except Exception as e:
-        print("Error reloading controller.py")
-        print(e)
-
+## Main
 if __name__ == "__main__":
-    # Create the DQN agent
-    num_cpu = 12
-    env_vector = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
-    model = DQN('MlpPolicy', env=env_vector, verbose=1, learning_rate=3e-3, batch_size=16192,
-                learning_starts=1000, target_update_interval=100, seed=18)
-
-    # Configure the logger
-    if not hasattr(model, '_logger') or model._logger is None:
-        model._logger = configure()
+    # Create the PPO agents
+    num_cpu = 14
+    time_steps = 100_000_000
+    env_vec = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
+    model = PPO('MlpPolicy', env=env_vec, verbose=1, learning_rate=1e-5,
+                batch_size=2048*num_cpu, seed=18)
         
-    # Train the model
-    num_episodes = 10000
-    episode_rewards = train()
+    # Train the model & plot
+    train(time_steps)
+    plot_training_data()
     print('Finished :D')
-
-    # Print the average reward over the last 100 episodes
-    #avg_reward = np.mean(episode_rewards[-100:])
-    #print(f"\nAverage reward over the last 100 episodes: {avg_reward:.2f}")
