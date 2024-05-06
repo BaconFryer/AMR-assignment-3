@@ -100,21 +100,23 @@ class EnvWrapper(gym.Env):
     def calc_reward(self, state, target_pos, t):
         x, y = state[0], state[1]
         x_targ, y_targ = target_pos[0], target_pos[1]
+
+        dist = ((x - x_targ)**2 + (y - y_targ)**2)**0.5
+        dist_fact = (1 / (1 + dist**2))
         
         # Punish for leaving the game area
         if not (-8 <= x <= 8 and -8 <= y <= 8):
             return -20
         
         # Reward for being close to the target
-        dist = ((x - x_targ)**2 + (y - y_targ)**2)**0.5
-        reward = 1 / (1 + dist)
+        reward =  dist_fact * 2
         
         # Reward for time spent alive
-        reward += t*0.05
+        # reward += t*0.05
         
         # Reward for being at the target during the last 10 seconds
-        if 10 <= t <= 20 and dist < 0.01:
-            reward += 1
+        if 10 <= t <= 20 and dist < 0.1:
+            reward += dist_fact * 1
             
         return reward
 
