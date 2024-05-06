@@ -107,21 +107,21 @@ class EnvWrapper(gym.Env):
         x_targ, y_targ = target_pos[0], target_pos[1]
 
         dist = ((x - x_targ)**2 + (y - y_targ)**2)**0.5
-        dist_fact = (1 / (1 + dist**2))
+        dist_fact = (1 / (1 + dist))
         
         # Punish for leaving the game area
         if not (0 <= x <= 8 and 0 <= y <= 8):
             return -20
         
         # Reward for being close to the target
-        reward =  dist_fact * 2
+        reward =  1.5 * dist_fact ** 2
         
         # Reward for time spent alive
-        # reward += t*0.05
+        reward += t* 0.25 * dist_fact ** 3
         
         # Reward for being at the target during the last 10 seconds
-        if 10 <= t <= 20 and dist < 0.1:
-            reward += dist_fact * 1
+        if 10 <= t <= 20 and dist < 0.001:
+            reward += dist_fact * 5
             
         return reward
 
@@ -156,7 +156,7 @@ if __name__ == "__main__":
     # Config vars
     num_cpu = 14
     time_steps = 1_000_000_000
-    save_freq = 1_000_000
+    save_freq = 1_00_000
     save_dir = './models/'
     log_dir = './logs/'
     
@@ -171,7 +171,7 @@ if __name__ == "__main__":
     )
     
     env_vec = SubprocVecEnv([make_env(i, log_dir, env_base) for i in range(num_cpu)])
-    model = PPO('MlpPolicy', env=env_vec, verbose=1, learning_rate=1e-5,
+    model = PPO('MlpPolicy', env=env_vec, verbose=1, learning_rate=1e-3,
                 batch_size=2048*num_cpu, seed=18)
         
     # Train model
