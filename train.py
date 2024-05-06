@@ -142,7 +142,7 @@ class EnvWrapper(gym.Env):
 
 ## Training
 def train(time_steps=1e6, save_dir='./models/', save_freq=1e5, log_dir='./logs/'):    
-    callback = CheckpointCallback(
+    checkpoint_callback = CheckpointCallback(
         save_freq=save_freq,
         save_path=f'{save_dir}/',
         name_prefix="PPO_Drone",
