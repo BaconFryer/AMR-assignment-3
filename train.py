@@ -81,6 +81,10 @@ class EnvWrapper(gym.Env):
         self.env.step((u_1, u_2))
         state = self.env.drone.get_state()
         x, y = state[0], state[1]
+        
+        state_targ = np.array(state)
+        state_targ[0] = self.target_pos[0] - x
+        state_targ[1] = self.target_pos[1] - y
 
         # Calculate time_delta and update time variable
         sim_time = self.env.time / 60
@@ -93,13 +97,13 @@ class EnvWrapper(gym.Env):
         if not (0 <= x <= 8 and 0 <= y <= 8):
             # Episode is done if the drone goes out of bounds
             done = True
-        elif sim_time >= 25:
-            # Episode is done if the time exceeds 25 seconds
+        elif sim_time >= 20:
+            # Episode is done if the time exceeds 20 seconds
             done = True
     
         truncated = False
         info = {}
-        return state, reward, done, truncated, info
+        return state_targ, reward, done, truncated, info
 
     # Define the reward function
     def calc_reward(self, state, target_pos, t):
@@ -157,7 +161,7 @@ if __name__ == "__main__":
     # Config vars
     num_cpu = 14
     time_steps = 1_000_000_000
-    save_freq = 1_00_000
+    save_freq = 1_000_000
     save_dir = './models/'
     log_dir = './logs/'
     
