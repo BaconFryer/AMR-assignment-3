@@ -16,13 +16,9 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.results_plotter import load_results, ts2xy
+from stable_baselines3.common.callbacks import CheckpointCallback
+from stable_baselines3.common.logger import configure
 
-
-## Logging or something idk
-logging.basicConfig(filename='training.log', level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s',
-                    filemode='w')
 
 ## Cursed file loading
 targets = []
@@ -44,20 +40,11 @@ with open("targets.csv", "r") as file:
 
 
 ## Environment setup
-env_base = Environment(
-    render_mode=None,
-    render_path=False,
-    screen_width=1000,
-    ui_width=200,
-    rand_dynamics_seed=controller.group_number,
-    wind_active=controller.wind_active,
-)
-
-def make_env(rank, seed=0):
+def make_env(rank, log_dir, env_base, seed=0):
     def _init():
         env = EnvWrapper(env_base)
         env.seed(controller.group_number + rank)
-        env = Monitor(env, filename=f'./logs/training_data_{rank}')
+        env = Monitor(env, filename=f'{log_dir}training_data_{rank}')
         return env
     set_random_seed(seed)
     return _init
@@ -144,67 +131,43 @@ class EnvWrapper(gym.Env):
 
 ## Training
 target_pos = targets[0]
-def train(time_steps=1e6):
-    model.learn(total_timesteps=time_steps)
-    model.save("PPO_Drone")
-    
-
-## Plotting
-def plot_training_data():
-    log_dir = './logs/'
-    
-    # Get all the monitor.csv files in the log directory
-    monitor_files = [file for file in os.listdir(log_dir) if file.endswith('.monitor.csv')]
-    
-    # Load the data from all monitor files
-    data_frames = []
-    for file in monitor_files:
-        file_path = os.path.join(log_dir, file)
-        data = pd.read_csv(file_path, skiprows=1)
-        data_frames.append(data)
-    
-    # Concatenate the data from all monitor files
-    all_data = pd.concat(data_frames)
-    
-    # Extract the desired parameters
-    timesteps = all_data['l'].cumsum()
-    rewards = all_data['r']
-    episode_lengths = all_data['l']
-    
-    # Create subplots
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
-    
-    # Plot rewards
-    ax1.plot(timesteps, rewards, color='blue', linewidth=1)
-    ax1.set_ylabel('Rewards')
-    ax1.set_title('Training Rewards')
-    ax1.grid(True)
-    
-    # Plot episode lengths (survival time)
-    ax2.plot(timesteps, episode_lengths, color='green', linewidth=1)
-    ax2.set_xlabel('Timesteps')
-    ax2.set_ylabel('Episode Length')
-    ax2.set_title('Episode Lengths (Survival Time)')
-    ax2.grid(True)
-    
-    # Adjust spacing between subplots
-    plt.tight_layout()
-    
-    # Save the plot as an image file
-    plt.savefig(f'{log_dir}training_data.png')
-    plt.close()
+def train(time_steps=1e6, save_dir='./models/', save_freq=1e5, log_dir='./logs/'):    
+    callback = CheckpointCallback(
+        save_freq=save_freq,
+        save_path=f'{save_dir}/training/',
+        name_prefix="PPO_Drone",
+        save_replay_buffer=True,
+        save_vecnormalize=True,
+    )
+    new_logger = configure(log_dir, ["stdout", "csv", "tensorboard"])
+    model.learn(total_timesteps=time_steps, callback=callback)
+    model.set_logger(new_logger)
+    model.save(f'{save_dir}PPO_Drone')
 
 
 ## Main
 if __name__ == "__main__":
-    # Create the PPO agents
+    # Config vars
     num_cpu = 14
-    time_steps = 100_000_000
-    env_vec = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
-    model = PPO('MlpPolicy', env=env_vec, verbose=1, learning_rate=1e-5,
+    time_steps = 1_000_000_000
+    save_freq = 10_000_000
+    save_dir = './models/'
+    log_dir = './logs/'
+    
+    # Create environment & define model
+    env_base = Environment(
+        render_mode=None,
+        render_path=False,
+        screen_width=1000,
+        ui_width=200,
+        rand_dynamics_seed=controller.group_number,
+        wind_active=controller.wind_active,
+    )
+    
+    env_vec = SubprocVecEnv([make_env(i, log_dir, env_base) for i in range(num_cpu)])
+    model = PPO('MlpPolicy', env=env_vec, verbose=1, learning_rate=1e-4,
                 batch_size=2048*num_cpu, seed=18)
         
-    # Train the model & plot
-    train(time_steps)
-    plot_training_data()
+    # Train model
+    train(time_steps, save_dir, max(save_freq // num_cpu, 1))
     print('Finished :D')
