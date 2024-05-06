@@ -60,12 +60,14 @@ class EnvWrapper(gym.Env):
             dtype=np.float32
         )  # Define the observation space
         self.time = 0.0  # Initialize time variable
+        self.prev_state = None  # Initialize previous state variable
         self.seed()
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self.env.reset(controller.group_number, controller.wind_active)
         self.time = 0.0  # Reset time variable
+        self.prev_state = None  # Reset previous state variable
         
         # Randomly select a target position
         x_targ = np.random.uniform(0.5, 7.5)
@@ -89,8 +91,11 @@ class EnvWrapper(gym.Env):
         # Calculate time_delta and update time variable
         sim_time = self.env.time / 60
 
+        prev_state = self.prev_state
+        self.prev_state = state  # Update previous state variable
+
         # Calculate the reward
-        reward = self.calc_reward(state, self.target_pos, sim_time)
+        reward = self.calc_reward(state, self.target_pos, sim_time, prev_state)
         
         # Check if the episode is done based on certain conditions
         done = False
@@ -106,7 +111,7 @@ class EnvWrapper(gym.Env):
         return state_targ, reward, done, truncated, info
 
     # Define the reward function
-    def calc_reward(self, state, target_pos, t):
+    def calc_reward(self, state, target_pos, t, prev_state):
         x, y = state[0], state[1]
         x_targ, y_targ = target_pos[0], target_pos[1]
         dist = ((x - x_targ)**2 + (y - y_targ)**2)**0.5
@@ -126,6 +131,20 @@ class EnvWrapper(gym.Env):
         # Reward for being at the target during the last 10 seconds
         if 10 <= t <= 20 and dist < 0.1:
             reward += np.exp(10 - t) * dist_fact * 10  # Exponential reward based on remaining time
+        
+        # Punish for instability and erratic movement
+        if prev_state is not None:
+            # Convert tuples to numpy arrays
+            curr_vel = np.array(state[2:4])
+            prev_vel = np.array(prev_state[2:4])
+            
+            # Calculate changes in velocity and angles
+            vel_change = np.linalg.norm(curr_vel - prev_vel)
+            angle_change = np.abs(state[4] - prev_state[4])
+            
+            # Penalize based on the magnitude of changes
+            stability_penalty = 0.1 * (vel_change + angle_change)
+            reward -= stability_penalty
         
         return reward
 
