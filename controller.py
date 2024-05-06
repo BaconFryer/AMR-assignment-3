@@ -2,7 +2,7 @@ wind_active = True  # Select whether you want to activate wind or not
 group_number = 18  # Enter your group number here
 
 from stable_baselines3 import PPO
-model = PPO.load("./models/PPO_Drone.zip")
+model = PPO.load("./models/PPO_Drone_Kris_80m_best.zip")
 time = 0
 
 def controller(state, target, dt):

@@ -16,7 +16,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.callbacks import CheckpointCallback
+from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3.common.logger import configure
 
 
@@ -93,8 +93,8 @@ class EnvWrapper(gym.Env):
         if not (0 <= x <= 8 and 0 <= y <= 8):
             # Episode is done if the drone goes out of bounds
             done = True
-        elif sim_time >= 20:
-            # Episode is done if the time exceeds 20 seconds
+        elif sim_time >= 25:
+            # Episode is done if the time exceeds 25 seconds
             done = True
     
         truncated = False
@@ -114,14 +114,14 @@ class EnvWrapper(gym.Env):
             return -20
         
         # Reward for being close to the target
-        reward =  1.5 * dist_fact ** 2
+        reward =  1.5 * dist_fact ** 1.5
         
         # Reward for time spent alive
-        reward += t* 0.25 * dist_fact ** 3
+        reward += t* 0.25 * dist_fact ** 2.5
         
         # Reward for being at the target during the last 10 seconds
-        if 10 <= t <= 20 and dist < 0.001:
-            reward += dist_fact * 5
+        if 10 <= t <= 20 and dist < 0.01:
+            reward += dist_fact * 4.5
             
         return reward
 
@@ -145,8 +145,9 @@ def train(time_steps=1e6, save_dir='./models/', save_freq=1e5, log_dir='./logs/'
         save_replay_buffer=True,
         save_vecnormalize=True,
     )
+
     new_logger = configure(log_dir, ["stdout", "csv", "tensorboard"])
-    model.learn(total_timesteps=time_steps, callback=callback)
+    model.learn(total_timesteps=time_steps, callback=callback, progress_bar=True)
     model.set_logger(new_logger)
     model.save(f'{save_dir}PPO_Drone')
 
