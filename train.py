@@ -55,7 +55,7 @@ class EnvWrapper(gym.Env):
         self.num_steps = 161
         self.action_space = gym.spaces.MultiDiscrete(np.array([self.num_steps, self.num_steps]))
         self.observation_space = gym.spaces.Box(
-            low=np.array([-8, -8, -np.inf, -np.inf, -np.pi, -np.inf]),
+            low=np.array([0, 0, -np.inf, -np.inf, -np.pi, -np.inf]),
             high=np.array([8, 8, np.inf, np.inf, np.pi, np.inf]),
             dtype=np.float32
         )  # Define the observation space
@@ -66,6 +66,11 @@ class EnvWrapper(gym.Env):
         super().reset(seed=seed)
         self.env.reset(controller.group_number, controller.wind_active)
         self.time = 0.0  # Reset time variable
+        
+        # Randomly select a target position
+        x_targ = np.random.uniform(0.5, 7.5)
+        y_targ = np.random.uniform(0.5, 7.5)
+        self.target_pos = (x_targ, y_targ)
         
         observation = self.env.drone.get_state()
         info = {}  # Add any additional information if needed
@@ -81,7 +86,7 @@ class EnvWrapper(gym.Env):
         sim_time = self.env.time / 60
 
         # Calculate the reward
-        reward = self.calc_reward(state, target_pos, sim_time)
+        reward = self.calc_reward(state, self.target_pos, sim_time)
         
         # Check if the episode is done based on certain conditions
         done = False
@@ -132,7 +137,6 @@ class EnvWrapper(gym.Env):
 
 
 ## Training
-target_pos = targets[0]
 def train(time_steps=1e6, save_dir='./models/', save_freq=1e5, log_dir='./logs/'):    
     callback = CheckpointCallback(
         save_freq=save_freq,
@@ -152,7 +156,7 @@ if __name__ == "__main__":
     # Config vars
     num_cpu = 14
     time_steps = 1_000_000_000
-    save_freq = 10_000_000
+    save_freq = 1_000_000
     save_dir = './models/'
     log_dir = './logs/'
     
