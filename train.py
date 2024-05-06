@@ -109,24 +109,24 @@ class EnvWrapper(gym.Env):
     def calc_reward(self, state, target_pos, t):
         x, y = state[0], state[1]
         x_targ, y_targ = target_pos[0], target_pos[1]
-
         dist = ((x - x_targ)**2 + (y - y_targ)**2)**0.5
-        dist_fact = (1 / (1 + dist))
+        dist_fact = np.exp(-dist)  # Exponential reward for being close to the target
         
         # Punish for leaving the game area
         if not (0 <= x <= 8 and 0 <= y <= 8):
-            return -20
+            return -100
         
         # Reward for being close to the target
-        reward =  1.5 * dist_fact ** 1.5
+        reward = 10 * dist_fact
         
-        # Reward for time spent alive
-        reward += t* 0.25 * dist_fact ** 2.5
+        # Punishment based on time/distance
+        time_factor = np.exp(t / 10)  # Exponential punishment for taking longer
+        reward -= time_factor * dist
         
         # Reward for being at the target during the last 10 seconds
-        if 10 <= t <= 20 and dist < 0.01:
-            reward += dist_fact * 4.5
-            
+        if 10 <= t <= 20 and dist < 0.1:
+            reward += np.exp(10 - t) * dist_fact * 10  # Exponential reward based on remaining time
+        
         return reward
 
     def _convert_action(self, action):
