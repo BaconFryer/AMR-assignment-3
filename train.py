@@ -90,7 +90,7 @@ class EnvWrapper(gym.Env):
         
         # Check if the episode is done based on certain conditions
         done = False
-        if not (-8 <= x <= 8 and -8 <= y <= 8):
+        if not (0 <= x <= 8 and 0 <= y <= 8):
             # Episode is done if the drone goes out of bounds
             done = True
         elif sim_time >= 20:
