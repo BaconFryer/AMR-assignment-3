@@ -2,7 +2,7 @@ wind_active = True  # Select whether you want to activate wind or not
 group_number = 18  # Enter your group number here
 
 from stable_baselines3 import PPO
-model = PPO.load("./models/PPO_Drone_Kris_80m_best.zip")
+model = PPO.load("./models/PPO_Drone_15999872_steps.zip")
 time = 0
 
 def controller(state, target, dt):
@@ -16,16 +16,15 @@ def controller(state, target, dt):
     global time
     action = model.predict(state)[0] #deterministic=True)[0]
 
-    u_1 = action[0] / 160 if action[0] != 0 else 0
-    u_2 = action[1] / 160 if action[1] != 0 else 0
+    u_1 = action[0] / 160 if action[0] != 0 else 0.0000
+    u_2 = action[1] / 160 if action[1] != 0 else 0.0000
     
     error_x = target[0] - state[0]
     error_y = target[1] - state[1]
-    errors = (error_x, error_y)
     
     time += dt
     
-    print(f"u_1: {u_1}, u_2: {u_2}, time: {time}, error: {errors}", end="\r")
+    print(f"u_1: {u_1:.3f}, u_2: {u_2:.3f}, time: {time:.3f}, error_x: {error_x:.3f}, error_y: {error_y:.3f}", end="\r")
 
 
     return (u_1, u_2)
